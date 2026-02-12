@@ -22,6 +22,7 @@ class GamePlayWindow(arcade.Window):
 
         # Reset environment
         self.obs, self.info = self.env.reset()
+        self.total_reward = 0.0
 
         # UI Text Objects initialized later or simple debug draw
         self.text_info = arcade.Text(
@@ -56,16 +57,18 @@ class GamePlayWindow(arcade.Window):
         self.obs, reward, terminated, truncated, self.info = self.env.step(
             self.current_action
         )
+        self.total_reward += reward
 
         if terminated or truncated:
             reason = self.info["reason"] if "reason" in self.info else "Truncated"
-            print(f"Game Over! Reward: {reward} | Reason: {reason}")
+            print(f"Game Over! Return: {self.total_reward} | Reason: {reason}")
             self.obs, self.info = self.env.reset()
+            self.total_reward = 0.0
 
         # Update debug text
         energy = self.obs["energy"][0]
         self.text_info.text = (
-            f"Action: {self.current_action} | Energy: {energy:.1f} | Reward: {reward:.2f}"
+            f"Action: {self.current_action} | Energy: {energy:.1f} | Return: {self.total_reward:.2f}"
         )
 
     def on_draw(self):
