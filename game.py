@@ -67,9 +67,7 @@ class GamePlayWindow(arcade.Window):
 
         # Update debug text
         energy = self.obs["energy"][0]
-        self.text_info.text = (
-            f"Action: {self.current_action} | Energy: {energy:.1f} | Return: {self.total_reward:.2f}"
-        )
+        self.text_info.text = f"Action: {self.current_action} | Energy: {energy:.1f} | Return: {self.total_reward:.2f}"
 
     def on_draw(self):
         # Env handles clearing and drawing logic

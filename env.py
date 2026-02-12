@@ -49,7 +49,6 @@ class GameEnvConfig:
     # Reward params
     success_reward: float = 5.0
     failure_reward: float = -5.0
-    progress_weight: float = 1.0
     energy_weight: float = 0.001
 
 
@@ -105,7 +104,6 @@ class GameEnv(gym.Env):
         # Reward params
         self.success_reward = config.success_reward
         self.failure_reward = config.failure_reward
-        self.progress_weight = config.progress_weight
         self.energy_weight = config.energy_weight
 
         # Observation Space
@@ -119,8 +117,12 @@ class GameEnv(gym.Env):
             {
                 "mass": spaces.Box(low=0, high=np.inf, shape=(1,), dtype=np.float32),
                 "energy": spaces.Box(low=0, high=np.inf, shape=(1,), dtype=np.float32),
-                "vel": spaces.Box(low=-np.inf, high=np.inf, shape=(2,), dtype=np.float32),
-                "ang_vel": spaces.Box(low=-np.inf, high=np.inf, shape=(1,), dtype=np.float32),
+                "vel": spaces.Box(
+                    low=-np.inf, high=np.inf, shape=(2,), dtype=np.float32
+                ),
+                "ang_vel": spaces.Box(
+                    low=-np.inf, high=np.inf, shape=(1,), dtype=np.float32
+                ),
                 "image": spaces.Box(
                     low=0, high=255, shape=(self.height, self.width, 3), dtype=np.uint8
                 ),
@@ -144,7 +146,10 @@ class GameEnv(gym.Env):
             self.window = window
         else:
             self.window = arcade.Window(
-                self.width, self.height, self.name, visible=(self.render_mode == "human")
+                self.width,
+                self.height,
+                self.name,
+                visible=(self.render_mode == "human"),
             )
         arcade.set_window(self.window)
 
@@ -200,7 +205,7 @@ class GameEnv(gym.Env):
             start_x = self.np_random.uniform(room_l + padding, room_r - padding)
             start_y = self.np_random.uniform(room_b + padding, room_t - padding)
             self.agent_body.position = start_x, start_y
-        
+
         # Set agent heading angle
         if options and "agent_angle" in options:
             self.agent_body.angle = options["agent_angle"]
@@ -228,7 +233,12 @@ class GameEnv(gym.Env):
 
         # Initial distance for reward calc
         self._prev["agent_goal_dist"] = np.linalg.norm(
-            np.array([self.agent_body.position.x - self.goal_x, self.agent_body.position.y - self.goal_y])
+            np.array(
+                [
+                    self.agent_body.position.x - self.goal_x,
+                    self.agent_body.position.y - self.goal_y,
+                ]
+            )
         )
 
         return self._get_obs(), {}
@@ -245,39 +255,30 @@ class GameEnv(gym.Env):
         speed = self.agent_body.velocity.length
         d_dist = speed * self.dt
         d_angle = abs(self.agent_body.angular_velocity) * self.dt
-        cost_per_mass = d_dist * self.energy_cost_pixel + d_angle * self.energy_cost_rad + self.energy_per_mass_per_time * self.dt
+        cost_per_mass = (
+            d_dist * self.energy_cost_pixel
+            + d_angle * self.energy_cost_rad
+            + self.energy_per_mass_per_time * self.dt
+        )
         cost = self.agent_mass * cost_per_mass
         self.agent_energy -= cost
 
-        # Calculate reward terms
-        ## Progress Reward: Positive if getting closer
-        current_pos = np.array([self.agent_body.position.x, self.agent_body.position.y])
-        goal_pos = np.array([self.goal_x, self.goal_y])
-        current_dist = np.linalg.norm(current_pos - goal_pos)
-        r_dist = self.progress_weight * (self._prev["agent_goal_dist"] - current_dist)
+        # Calculate reward (energy cost penalty)
+        reward = -self.energy_weight * cost
 
-        ## Energy cost penalty
-        r_energy = self.energy_weight * cost
-
-        # Total reward
-        reward = r_dist - r_energy
+        # Update step counter
+        self.current_step += 1
 
         # Check termination
-        terminated, info = self._check_termination(current_dist)
+        terminated, info = self._check_termination()
         if terminated:
             if info["reason"] == "Failure":
                 reward += self.failure_reward
             elif info["reason"] == "Success":
                 reward += self.success_reward
 
-        # Update step counter
-        self.current_step += 1
-
         # Check truncation
         truncated = self._check_truncation()
-
-        # Update previous distance
-        self._prev["agent_goal_dist"] = current_dist
 
         return self._get_obs(), reward, terminated, truncated, info
 
@@ -320,7 +321,11 @@ class GameEnv(gym.Env):
             "image": self._img_obs,
         }
 
-    def _check_termination(self, current_dist):
+    def _check_termination(self):
+        current_pos = np.array([self.agent_body.position.x, self.agent_body.position.y])
+        goal_pos = np.array([self.goal_x, self.goal_y])
+        current_dist = np.linalg.norm(current_pos - goal_pos)
+
         terminated = False
         info = {}
         if self.agent_energy <= 0:
@@ -342,25 +347,27 @@ class GameEnv(gym.Env):
         heading = self.agent_body.angle
 
         # Vectorized angle computation
-        angles = np.linspace(heading - self.fov/2, heading + self.fov/2, self.num_rays)
+        angles = np.linspace(
+            heading - self.fov / 2, heading + self.fov / 2, self.num_rays
+        )
         cos_angles = np.cos(angles)
         sin_angles = np.sin(angles)
-        
+
         # End points for all rays
         end_x = p.x + cos_angles * self.view_radius
         end_y = p.y + sin_angles * self.view_radius
-        
+
         points = [(p.x, p.y)]  # Center point
-        
+
         for i in range(self.num_rays):
             end_point = (end_x[i], end_y[i])
             res = self.space.segment_query_first(p, end_point, 1, pymunk.ShapeFilter())
-            
+
             if res:
                 points.append((res.point.x, res.point.y))
             else:
                 points.append(end_point)
-                
+
         return points
 
     def _render_frame(self):
@@ -371,51 +378,75 @@ class GameEnv(gym.Env):
         # 2. Draw vision polygon as the lit area (only inside room will show)
         vision_poly = self._get_vision_polygon()
         arcade.draw_polygon_filled(vision_poly, arcade.color.WHITE)
-        
+
         # 3. Black outside walls (so vision can't "see" past walls even if rays escape)
         # Draw black rectangles outside the room bounds
         room_left, room_right = self.room_bounds[0], self.room_bounds[1]
         room_bottom, room_top = self.room_bounds[2], self.room_bounds[3]
-        
+
         # Left side
-        arcade.draw_lrbt_rectangle_filled(0, room_left, 0, self.height, arcade.color.BLACK)
+        arcade.draw_lrbt_rectangle_filled(
+            0, room_left, 0, self.height, arcade.color.BLACK
+        )
         # Right side
-        arcade.draw_lrbt_rectangle_filled(room_right, self.width, 0, self.height, arcade.color.BLACK)
+        arcade.draw_lrbt_rectangle_filled(
+            room_right, self.width, 0, self.height, arcade.color.BLACK
+        )
         # Bottom
-        arcade.draw_lrbt_rectangle_filled(room_left, room_right, 0, room_bottom, arcade.color.BLACK)
+        arcade.draw_lrbt_rectangle_filled(
+            room_left, room_right, 0, room_bottom, arcade.color.BLACK
+        )
         # Top
-        arcade.draw_lrbt_rectangle_filled(room_left, room_right, room_top, self.height, arcade.color.BLACK)
-        
+        arcade.draw_lrbt_rectangle_filled(
+            room_left, room_right, room_top, self.height, arcade.color.BLACK
+        )
+
         # 4. Draw walls (black lines on white background = visible)
         arcade.draw_line(
-            room_left, room_bottom, room_right, room_bottom,
-            arcade.color.BLACK, 10,
+            room_left,
+            room_bottom,
+            room_right,
+            room_bottom,
+            arcade.color.BLACK,
+            10,
         )
         arcade.draw_line(
-            room_right, room_bottom, room_right, room_top,
-            arcade.color.BLACK, 10,
+            room_right,
+            room_bottom,
+            room_right,
+            room_top,
+            arcade.color.BLACK,
+            10,
         )
         arcade.draw_line(
-            room_right, room_top, room_left, room_top,
-            arcade.color.BLACK, 10,
+            room_right,
+            room_top,
+            room_left,
+            room_top,
+            arcade.color.BLACK,
+            10,
         )
         arcade.draw_line(
-            room_left, room_top, room_left, room_bottom,
-            arcade.color.BLACK, 10,
+            room_left,
+            room_top,
+            room_left,
+            room_bottom,
+            arcade.color.BLACK,
+            10,
         )
 
         # 5. Goal - only draw if visible (within vision cone and not blocked)
         gx, gy = self.goal_x, self.goal_y
         p = self.agent_body.position
         heading = self.agent_body.angle
-        
+
         # Check if goal is in vision
-        goal_dist = np.sqrt((gx - p.x)**2 + (gy - p.y)**2)
+        goal_dist = np.sqrt((gx - p.x) ** 2 + (gy - p.y) ** 2)
         goal_angle = np.arctan2(gy - p.y, gx - p.x)
         angle_diff = abs(goal_angle - heading)
         if angle_diff > np.pi:
             angle_diff = 2 * np.pi - angle_diff
-        
+
         if goal_dist < self.view_radius and angle_diff < self.fov / 2:
             # Check if wall blocks view to goal (exclude agent's own shape)
             goal_point = (gx, gy)

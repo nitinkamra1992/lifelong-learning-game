@@ -12,7 +12,7 @@ def main(args):
         max_steps=args.max_steps,
     )
     env = GameEnv(config=config)
-    
+
     print("=" * 60)
     print("Running Game Environment with Random Actions")
     print("=" * 60)
@@ -30,28 +30,30 @@ def main(args):
         obs, info = env.reset()
         episode_reward = 0
         step_count = 0
-        
+
         print(f"\n--- Episode {episode + 1} ---")
         print(f"Initial Energy: {obs['energy'][0]:.1f}")
-        
+
         done = False
         while not done:
             # Sample random action
             action = env.action_space.sample()
-            
+
             # Step environment
             obs, reward, terminated, truncated, info = env.step(action)
-            
+
             episode_reward += reward
             step_count += 1
             n_frames += 1
-            
+
             # Print progress every 100 steps
             if step_count % 100 == 0:
-                print(f"  Step {step_count}: Energy={obs['energy'][0]:.1f}, Episode return={episode_reward:.2f}")
-            
+                print(
+                    f"  Step {step_count}: Energy={obs['energy'][0]:.1f}, Episode return={episode_reward:.2f}"
+                )
+
             done = terminated or truncated
-        
+
         # Episode summary
         reason = info.get("reason", "Truncated")
         print(f"\nEpisode {episode + 1} finished:")
@@ -71,13 +73,15 @@ def main(args):
 
 if __name__ == "__main__":
     # Parse command line arguments
-    parser = argparse.ArgumentParser(description="Test the game environment with random actions")
+    parser = argparse.ArgumentParser(
+        description="Test the game environment with random actions"
+    )
     parser.add_argument(
         "-n",
         "--num_episodes",
         type=int,
         default=5,
-        help="Number of episodes to run (default: 5)"
+        help="Number of episodes to run (default: 5)",
     )
     parser.add_argument(
         "-rm",
@@ -85,14 +89,14 @@ if __name__ == "__main__":
         type=str,
         default=None,
         choices=[None, "human", "rgb_array"],
-        help="Render mode: None (headless), 'human', or 'rgb_array' (default: None)"
+        help="Render mode: None (headless), 'human', or 'rgb_array' (default: None)",
     )
     parser.add_argument(
         "-ms",
         "--max_steps",
         type=int,
         default=1000,
-        help="Maximum steps per episode (default: 1000)"
+        help="Maximum steps per episode (default: 1000)",
     )
     args = parser.parse_args()
 
